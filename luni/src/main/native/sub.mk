@@ -5,16 +5,19 @@
 
 LOCAL_SRC_FILES := \
 	AsynchronousSocketCloseMonitor.cpp \
+	ExecStrings.cpp \
 	IcuUtilities.cpp \
-	JniConstants.cpp \
 	JniException.cpp \
 	NetworkUtilities.cpp \
 	Register.cpp \
+	ZipUtilities.cpp \
 	cbigint.cpp \
 	java_io_Console.cpp \
 	java_io_File.cpp \
 	java_io_ObjectStreamClass.cpp \
 	java_lang_Character.cpp \
+	java_lang_Double.cpp \
+	java_lang_Float.cpp \
 	java_lang_Math.cpp \
 	java_lang_ProcessManager.cpp \
 	java_lang_RealToString.cpp \
@@ -32,6 +35,7 @@ LOCAL_SRC_FILES := \
 	java_util_zip_Deflater.cpp \
 	java_util_zip_Inflater.cpp \
 	libcore_icu_AlphabeticIndex.cpp \
+	libcore_icu_DateIntervalFormat.cpp \
 	libcore_icu_ICU.cpp \
 	libcore_icu_NativeBreakIterator.cpp \
 	libcore_icu_NativeCollation.cpp \
@@ -48,11 +52,9 @@ LOCAL_SRC_FILES := \
 	libcore_io_Posix.cpp \
 	libcore_net_RawSocket.cpp \
 	org_apache_harmony_xml_ExpatParser.cpp \
-	org_apache_harmony_xnet_provider_jsse_NativeCrypto.cpp \
 	readlink.cpp \
 	realpath.cpp \
 	sun_misc_Unsafe.cpp \
-	toStringArray.cpp \
 	valueOf.cpp
 
 LOCAL_C_INCLUDES += \

@@ -79,6 +79,10 @@ public final class LocaleData {
     public String mediumDateFormat;
     public String shortDateFormat;
 
+    // shortDateFormat, but guaranteed to have 4-digit years.
+    // Used by android.text.format.DateFormat.getDateFormatStringForSetting.
+    public String shortDateFormat4;
+
     // Used by android.text.format.DateFormat.getTimeFormat.
     public String timeFormat12; // "hh:mm a"
     public String timeFormat24; // "HH:mm"
@@ -170,6 +174,12 @@ public final class LocaleData {
         if (!ICU.initLocaleDataImpl(locale.toString(), localeData)) {
             throw new AssertionError("couldn't initialize LocaleData for locale " + locale);
         }
+
+        // Get the "h:mm a" and "HH:mm" 12- and 24-hour time format strings.
+        localeData.timeFormat12 = ICU.getBestDateTimePattern("hm", locale.toString());
+        localeData.timeFormat24 = ICU.getBestDateTimePattern("Hm", locale.toString());
+
+        // Fix up a couple of patterns.
         if (localeData.fullTimeFormat != null) {
             // There are some full time format patterns in ICU that use the pattern character 'v'.
             // Java doesn't accept this, so we replace it with 'z' which has about the same result
@@ -187,6 +197,7 @@ public final class LocaleData {
             // accidentally eat too much.
             localeData.integerPattern = localeData.numberPattern.replaceAll("\\.[#,]*", "");
         }
+        localeData.shortDateFormat4 = localeData.shortDateFormat.replaceAll("\\byy\\b", "y");
         return localeData;
     }
 }

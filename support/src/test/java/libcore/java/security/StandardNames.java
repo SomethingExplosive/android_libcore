@@ -31,6 +31,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import javax.crypto.spec.DHPrivateKeySpec;
@@ -99,12 +100,12 @@ public final class StandardNames extends Assert {
             PROVIDER_ALGORITHMS.put(type, algorithms);
         }
         assertTrue("Duplicate " + type + " " + algorithm,
-                   algorithms.add(algorithm.toUpperCase()));
+                   algorithms.add(algorithm.toUpperCase(Locale.ROOT)));
     }
     private static void unprovide(String type, String algorithm) {
         Set<String> algorithms = PROVIDER_ALGORITHMS.get(type);
         assertNotNull(algorithms);
-        assertTrue(algorithm, algorithms.remove(algorithm.toUpperCase()));
+        assertTrue(algorithm, algorithms.remove(algorithm.toUpperCase(Locale.ROOT)));
         if (algorithms.isEmpty()) {
             assertNotNull(PROVIDER_ALGORITHMS.remove(type));
         }
@@ -212,6 +213,7 @@ public final class StandardNames extends Assert {
         provide("SecretKeyFactory", "PBEWithSHA1AndDESede");
         provide("SecretKeyFactory", "PBEWithSHA1AndRC2_40");
         provide("SecretKeyFactory", "PBKDF2WithHmacSHA1");
+        provide("SecretKeyFactory", "PBKDF2WithHmacSHA1And8bit");
         provide("SecureRandom", "SHA1PRNG");
         provide("Signature", "MD2withRSA");
         provide("Signature", "MD5withRSA");

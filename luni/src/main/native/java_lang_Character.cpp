@@ -21,6 +21,7 @@
 #include "ScopedUtfChars.h"
 #include "unicode/uchar.h"
 #include <math.h>
+#include <stdio.h> // For BUFSIZ
 #include <stdlib.h>
 
 static jint Character_digitImpl(JNIEnv*, jclass, jint codePoint, jint radix) {
@@ -135,6 +136,14 @@ static int Character_ofImpl(JNIEnv*, jclass, jint codePoint) {
     return ublock_getCode(codePoint);
 }
 
+static jboolean Character_isAlphabetic(JNIEnv*, jclass, jint codePoint) {
+  return u_hasBinaryProperty(codePoint, UCHAR_ALPHABETIC);
+}
+
+static jboolean Character_isIdeographic(JNIEnv*, jclass, jint codePoint) {
+  return u_hasBinaryProperty(codePoint, UCHAR_IDEOGRAPHIC);
+}
+
 static JNINativeMethod gMethods[] = {
     NATIVE_METHOD(Character, digitImpl, "!(II)I"),
     NATIVE_METHOD(Character, forNameImpl, "(Ljava/lang/String;)I"),
@@ -142,9 +151,11 @@ static JNINativeMethod gMethods[] = {
     NATIVE_METHOD(Character, getNameImpl, "(I)Ljava/lang/String;"),
     NATIVE_METHOD(Character, getNumericValueImpl, "!(I)I"),
     NATIVE_METHOD(Character, getTypeImpl, "!(I)I"),
+    NATIVE_METHOD(Character, isAlphabetic, "!(I)Z"),
     NATIVE_METHOD(Character, isDefinedImpl, "!(I)Z"),
     NATIVE_METHOD(Character, isDigitImpl, "!(I)Z"),
     NATIVE_METHOD(Character, isIdentifierIgnorableImpl, "!(I)Z"),
+    NATIVE_METHOD(Character, isIdeographic, "!(I)Z"),
     NATIVE_METHOD(Character, isLetterImpl, "!(I)Z"),
     NATIVE_METHOD(Character, isLetterOrDigitImpl, "!(I)Z"),
     NATIVE_METHOD(Character, isLowerCaseImpl, "!(I)Z"),

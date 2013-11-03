@@ -24,7 +24,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
-import java.util.regex.Pattern;
+import java.util.List;
 import java.util.zip.ZipFile;
 import libcore.io.ErrnoException;
 import libcore.io.IoUtils;
@@ -65,6 +65,11 @@ import static libcore.io.OsConstants.*;
     private final File[] nativeLibraryDirectories;
 
     /**
+     * Exceptions thrown during creation of the dexElements list.
+     */
+    private final IOException[] dexElementsSuppressedExceptions;
+
+    /**
      * Constructs an instance.
      *
      * @param definingContext the context in which any as-yet unresolved
@@ -103,7 +108,15 @@ import static libcore.io.OsConstants.*;
         }
 
         this.definingContext = definingContext;
-        this.dexElements = makeDexElements(splitDexPath(dexPath), optimizedDirectory);
+        ArrayList<IOException> suppressedExceptions = new ArrayList<IOException>();
+        this.dexElements = makeDexElements(splitDexPath(dexPath), optimizedDirectory,
+                                           suppressedExceptions);
+        if (suppressedExceptions.size() > 0) {
+            this.dexElementsSuppressedExceptions =
+                suppressedExceptions.toArray(new IOException[suppressedExceptions.size()]);
+        } else {
+            dexElementsSuppressedExceptions = null;
+        }
         this.nativeLibraryDirectories = splitLibraryPath(libraryPath);
     }
 
@@ -137,19 +150,14 @@ import static libcore.io.OsConstants.*;
      * do not refer to existing and readable directories.
      */
     private static File[] splitLibraryPath(String path) {
-        /*
-         * Native libraries may exist in both the system and
-         * application library paths, and we use this search order:
-         *
-         *   1. this class loader's library path for application
-         *      libraries
-         *   2. the VM's library path from the system
-         *      property for system libraries
-         *
-         * This order was reversed prior to Gingerbread; see http://b/2933456.
-         */
-        ArrayList<File> result = splitPaths(
-                path, System.getProperty("java.library.path", "."), true);
+        // Native libraries may exist in both the system and
+        // application library paths, and we use this search order:
+        //
+        //   1. this class loader's library path for application libraries
+        //   2. the VM's library path from the system property for system libraries
+        //
+        // This order was reversed prior to Gingerbread; see http://b/2933456.
+        ArrayList<File> result = splitPaths(path, System.getProperty("java.library.path"), true);
         return result.toArray(new File[result.size()]);
     }
 
@@ -195,10 +203,9 @@ import static libcore.io.OsConstants.*;
      * Makes an array of dex/resource path elements, one per element of
      * the given array.
      */
-    private static Element[] makeDexElements(ArrayList<File> files,
-            File optimizedDirectory) {
+    private static Element[] makeDexElements(ArrayList<File> files, File optimizedDirectory,
+                                             ArrayList<IOException> suppressedExceptions) {
         ArrayList<Element> elements = new ArrayList<Element>();
-
         /*
          * Open all files and load the (direct or contained) dex files
          * up front.
@@ -221,14 +228,14 @@ import static libcore.io.OsConstants.*;
 
                 try {
                     dex = loadDexFile(file, optimizedDirectory);
-                } catch (IOException ignored) {
+                } catch (IOException suppressed) {
                     /*
-                     * IOException might get thrown "legitimately" by
-                     * the DexFile constructor if the zip file turns
-                     * out to be resource-only (that is, no
-                     * classes.dex file in it). Safe to just ignore
-                     * the exception here, and let dex == null.
+                     * IOException might get thrown "legitimately" by the DexFile constructor if the
+                     * zip file turns out to be resource-only (that is, no classes.dex file in it).
+                     * Let dex == null and hang on to the exception to add to the tea-leaves for
+                     * when findClass returns null.
                      */
+                    suppressedExceptions.add(suppressed);
                 }
             } else if (file.isDirectory()) {
                 // We support directories for looking up resources.
@@ -302,21 +309,25 @@ import static libcore.io.OsConstants.*;
      * defined, then this method will define it in the defining
      * context that this instance was constructed with.
      *
+     * @param name of class to find
+     * @param suppressed exceptions encountered whilst finding the class
      * @return the named class or {@code null} if the class is not
      * found in any of the dex files
      */
-    public Class findClass(String name) {
+    public Class findClass(String name, List<Throwable> suppressed) {
         for (Element element : dexElements) {
             DexFile dex = element.dexFile;
 
             if (dex != null) {
-                Class clazz = dex.loadClassBinaryName(name, definingContext);
+                Class clazz = dex.loadClassBinaryName(name, definingContext, suppressed);
                 if (clazz != null) {
                     return clazz;
                 }
             }
         }
-
+        if (dexElementsSuppressedExceptions != null) {
+            suppressed.addAll(Arrays.asList(dexElementsSuppressedExceptions));
+        }
         return null;
     }
 

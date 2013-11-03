@@ -17,6 +17,8 @@
 #define LOG_TAG "Posix"
 
 #include "AsynchronousSocketCloseMonitor.h"
+#include "cutils/log.h"
+#include "ExecStrings.h"
 #include "JNIHelp.h"
 #include "JniConstants.h"
 #include "JniException.h"
@@ -36,7 +38,6 @@
 #include <net/if.h>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <netinet/in.h>
 #include <poll.h>
 #include <pwd.h>
 #include <signal.h>
@@ -44,8 +45,8 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
-#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/uio.h>
@@ -245,26 +246,28 @@ static jobject makeStructStat(JNIEnv* env, const struct stat& sb) {
             static_cast<jlong>(sb.st_blocks));
 }
 
-static jobject makeStructStatFs(JNIEnv* env, const struct statfs& sb) {
+static jobject makeStructStatVfs(JNIEnv* env, const struct statvfs& sb) {
 #if defined(__APPLE__)
     // Mac OS has no f_namelen field in struct statfs.
     jlong max_name_length = 255; // __DARWIN_MAXNAMLEN
 #else
-    // Until Mac OS 10.7, these were 32-bit fields.
-    STATIC_ASSERT(sizeof(sb.f_bavail) == sizeof(jlong), statfs_not_64_bit);
-    STATIC_ASSERT(sizeof(sb.f_bfree) == sizeof(jlong), statfs_not_64_bit);
-    STATIC_ASSERT(sizeof(sb.f_blocks) == sizeof(jlong), statfs_not_64_bit);
-
-    jlong max_name_length = static_cast<jlong>(sb.f_namelen);
+    jlong max_name_length = static_cast<jlong>(sb.f_namemax);
 #endif
 
-    static jmethodID ctor = env->GetMethodID(JniConstants::structStatFsClass, "<init>",
-            "(JJJJJJJJ)V");
-    return env->NewObject(JniConstants::structStatFsClass, ctor, static_cast<jlong>(sb.f_bsize),
-            static_cast<jlong>(sb.f_blocks), static_cast<jlong>(sb.f_bfree),
-            static_cast<jlong>(sb.f_bavail), static_cast<jlong>(sb.f_files),
-            static_cast<jlong>(sb.f_ffree), max_name_length,
-            static_cast<jlong>(sb.f_frsize));
+    static jmethodID ctor = env->GetMethodID(JniConstants::structStatVfsClass, "<init>",
+            "(JJJJJJJJJJJ)V");
+    return env->NewObject(JniConstants::structStatVfsClass, ctor,
+                          static_cast<jlong>(sb.f_bsize),
+                          static_cast<jlong>(sb.f_frsize),
+                          static_cast<jlong>(sb.f_blocks),
+                          static_cast<jlong>(sb.f_bfree),
+                          static_cast<jlong>(sb.f_bavail),
+                          static_cast<jlong>(sb.f_files),
+                          static_cast<jlong>(sb.f_ffree),
+                          static_cast<jlong>(sb.f_favail),
+                          static_cast<jlong>(sb.f_fsid),
+                          static_cast<jlong>(sb.f_flag),
+                          max_name_length);
 }
 
 static jobject makeStructLinger(JNIEnv* env, const struct linger& l) {
@@ -357,11 +360,6 @@ class Passwd {
 public:
     Passwd(JNIEnv* env) : mEnv(env), mResult(NULL) {
         mBufferSize = sysconf(_SC_GETPW_R_SIZE_MAX);
-        if (mBufferSize == -1UL) {
-            // We're probably on bionic, where 1KiB should be enough for anyone.
-            // TODO: fix bionic to return 1024 like glibc.
-            mBufferSize = 1024;
-        }
         mBuffer.reset(new char[mBufferSize]);
     }
 
@@ -493,12 +491,10 @@ static void Posix_execve(JNIEnv* env, jobject, jstring javaFilename, jobjectArra
         return;
     }
 
-    char** argv = convertStrings(env, javaArgv);
-    char** envp = convertStrings(env, javaEnvp);
-    execve(path.c_str(), argv, envp);
+    ExecStrings argv(env, javaArgv);
+    ExecStrings envp(env, javaEnvp);
+    execve(path.c_str(), argv.get(), envp.get());
 
-    freeStrings(env, javaArgv, argv);
-    freeStrings(env, javaEnvp, envp);
     throwErrnoException(env, "execve");
 }
 
@@ -508,10 +504,9 @@ static void Posix_execv(JNIEnv* env, jobject, jstring javaFilename, jobjectArray
         return;
     }
 
-    char** argv = convertStrings(env, javaArgv);
-    execv(path.c_str(), argv);
+    ExecStrings argv(env, javaArgv);
+    execv(path.c_str(), argv.get());
 
-    freeStrings(env, javaArgv, argv);
     throwErrnoException(env, "execv");
 }
 
@@ -578,15 +573,15 @@ static jobject Posix_fstat(JNIEnv* env, jobject, jobject javaFd) {
     return makeStructStat(env, sb);
 }
 
-static jobject Posix_fstatfs(JNIEnv* env, jobject, jobject javaFd) {
+static jobject Posix_fstatvfs(JNIEnv* env, jobject, jobject javaFd) {
     int fd = jniGetFDFromFileDescriptor(env, javaFd);
-    struct statfs sb;
-    int rc = TEMP_FAILURE_RETRY(fstatfs(fd, &sb));
+    struct statvfs sb;
+    int rc = TEMP_FAILURE_RETRY(fstatvfs(fd, &sb));
     if (rc == -1) {
-        throwErrnoException(env, "fstatfs");
+        throwErrnoException(env, "fstatvfs");
         return NULL;
     }
-    return makeStructStatFs(env, sb);
+    return makeStructStatVfs(env, sb);
 }
 
 static void Posix_fsync(JNIEnv* env, jobject, jobject javaFd) {
@@ -802,6 +797,11 @@ static jobject Posix_getsockoptUcred(JNIEnv* env, jobject, jobject javaFd, jint 
     return NULL;
   }
   return makeStructUcred(env, u);
+}
+
+static jint Posix_gettid(JNIEnv*, jobject) {
+  // Neither bionic nor glibc exposes gettid(2).
+  return syscall(__NR_gettid);
 }
 
 static jint Posix_getuid(JNIEnv*, jobject) {
@@ -1260,18 +1260,18 @@ static jobject Posix_stat(JNIEnv* env, jobject, jstring javaPath) {
     return doStat(env, javaPath, false);
 }
 
-static jobject Posix_statfs(JNIEnv* env, jobject, jstring javaPath) {
+static jobject Posix_statvfs(JNIEnv* env, jobject, jstring javaPath) {
     ScopedUtfChars path(env, javaPath);
     if (path.c_str() == NULL) {
         return NULL;
     }
-    struct statfs sb;
-    int rc = TEMP_FAILURE_RETRY(statfs(path.c_str(), &sb));
+    struct statvfs sb;
+    int rc = TEMP_FAILURE_RETRY(statvfs(path.c_str(), &sb));
     if (rc == -1) {
-        throwErrnoException(env, "statfs");
+        throwErrnoException(env, "statvfs");
         return NULL;
     }
-    return makeStructStatFs(env, sb);
+    return makeStructStatVfs(env, sb);
 }
 
 static jstring Posix_strerror(JNIEnv* env, jobject, jint errnum) {
@@ -1384,7 +1384,7 @@ static JNINativeMethod gMethods[] = {
     NATIVE_METHOD(Posix, fcntlFlock, "(Ljava/io/FileDescriptor;ILlibcore/io/StructFlock;)I"),
     NATIVE_METHOD(Posix, fdatasync, "(Ljava/io/FileDescriptor;)V"),
     NATIVE_METHOD(Posix, fstat, "(Ljava/io/FileDescriptor;)Llibcore/io/StructStat;"),
-    NATIVE_METHOD(Posix, fstatfs, "(Ljava/io/FileDescriptor;)Llibcore/io/StructStatFs;"),
+    NATIVE_METHOD(Posix, fstatvfs, "(Ljava/io/FileDescriptor;)Llibcore/io/StructStatVfs;"),
     NATIVE_METHOD(Posix, fsync, "(Ljava/io/FileDescriptor;)V"),
     NATIVE_METHOD(Posix, ftruncate, "(Ljava/io/FileDescriptor;J)V"),
     NATIVE_METHOD(Posix, gai_strerror, "(I)Ljava/lang/String;"),
@@ -1406,6 +1406,7 @@ static JNINativeMethod gMethods[] = {
     NATIVE_METHOD(Posix, getsockoptLinger, "(Ljava/io/FileDescriptor;II)Llibcore/io/StructLinger;"),
     NATIVE_METHOD(Posix, getsockoptTimeval, "(Ljava/io/FileDescriptor;II)Llibcore/io/StructTimeval;"),
     NATIVE_METHOD(Posix, getsockoptUcred, "(Ljava/io/FileDescriptor;II)Llibcore/io/StructUcred;"),
+    NATIVE_METHOD(Posix, gettid, "()I"),
     NATIVE_METHOD(Posix, getuid, "()I"),
     NATIVE_METHOD(Posix, if_indextoname, "(I)Ljava/lang/String;"),
     NATIVE_METHOD(Posix, inet_pton, "(ILjava/lang/String;)Ljava/net/InetAddress;"),
@@ -1453,7 +1454,7 @@ static JNINativeMethod gMethods[] = {
     NATIVE_METHOD(Posix, socket, "(III)Ljava/io/FileDescriptor;"),
     NATIVE_METHOD(Posix, socketpair, "(IIILjava/io/FileDescriptor;Ljava/io/FileDescriptor;)V"),
     NATIVE_METHOD(Posix, stat, "(Ljava/lang/String;)Llibcore/io/StructStat;"),
-    NATIVE_METHOD(Posix, statfs, "(Ljava/lang/String;)Llibcore/io/StructStatFs;"),
+    NATIVE_METHOD(Posix, statvfs, "(Ljava/lang/String;)Llibcore/io/StructStatVfs;"),
     NATIVE_METHOD(Posix, strerror, "(I)Ljava/lang/String;"),
     NATIVE_METHOD(Posix, strsignal, "(I)Ljava/lang/String;"),
     NATIVE_METHOD(Posix, symlink, "(Ljava/lang/String;Ljava/lang/String;)V"),

@@ -16,6 +16,7 @@
 
 #define LOG_TAG "libcore" // We'll be next to "dalvikvm" in the log; make the distinction clear.
 
+#include "cutils/log.h"
 #include "JniConstants.h"
 #include "ScopedLocalFrame.h"
 
@@ -31,13 +32,13 @@ int JNI_OnLoad(JavaVM* vm, void*) {
 
     ScopedLocalFrame localFrame(env);
 
-    JniConstants::init(env);
-
 #define REGISTER(FN) extern void FN(JNIEnv*); FN(env)
     REGISTER(register_java_io_Console);
     REGISTER(register_java_io_File);
     REGISTER(register_java_io_ObjectStreamClass);
     REGISTER(register_java_lang_Character);
+    REGISTER(register_java_lang_Double);
+    REGISTER(register_java_lang_Float);
     REGISTER(register_java_lang_Math);
     REGISTER(register_java_lang_ProcessManager);
     REGISTER(register_java_lang_RealToString);
@@ -55,6 +56,7 @@ int JNI_OnLoad(JavaVM* vm, void*) {
     REGISTER(register_java_util_zip_Deflater);
     REGISTER(register_java_util_zip_Inflater);
     REGISTER(register_libcore_icu_AlphabeticIndex);
+    REGISTER(register_libcore_icu_DateIntervalFormat);
     REGISTER(register_libcore_icu_ICU);
     REGISTER(register_libcore_icu_NativeBreakIterator);
     REGISTER(register_libcore_icu_NativeCollation);
@@ -72,7 +74,6 @@ int JNI_OnLoad(JavaVM* vm, void*) {
     REGISTER(register_libcore_net_RawSocket);
     REGISTER(register_org_apache_harmony_dalvik_NativeTestTarget);
     REGISTER(register_org_apache_harmony_xml_ExpatParser);
-    REGISTER(register_org_apache_harmony_xnet_provider_jsse_NativeCrypto);
     REGISTER(register_sun_misc_Unsafe);
 #undef REGISTER
     return JNI_VERSION_1_6;

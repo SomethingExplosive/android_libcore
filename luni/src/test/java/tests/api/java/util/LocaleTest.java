@@ -17,8 +17,6 @@
 
 package tests.api.java.util;
 
-import tests.support.Support_Locale;
-
 import java.security.Permission;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -168,10 +166,23 @@ public class LocaleTest extends junit.framework.TestCase {
         assertEquals("Failed to get locale", "fr_CA_WIN32", x.toString());
     }
 
+    /**
+     * java.util.Locale#getDisplayCountry()
+     */
+    public void test_getDisplayCountry() {
+        // Test for method java.lang.String java.util.Locale.getDisplayCountry()
+        assertTrue("Returned incorrect country: "
+                + testLocale.getDisplayCountry(), testLocale
+                .getDisplayCountry().equals("Canada"));
+
+        // Regression for Harmony-1146
+        Locale l_countryCD = new Locale("", "CD");
+        assertEquals("Congo [DRC]",
+              l_countryCD.getDisplayCountry());
+    }
+
     public void test_getDisplayCountryLjava_util_Locale() {
-        if (Support_Locale.isLocaleAvailable(Locale.ITALY)) {
-            assertEquals("Returned incorrect country", "Italie", Locale.ITALY.getDisplayCountry(l));
-        }
+        assertEquals("Italie", Locale.ITALY.getDisplayCountry(new Locale("fr", "CA", "WIN32")));
     }
 
     /**
@@ -190,19 +201,15 @@ public class LocaleTest extends junit.framework.TestCase {
     }
 
     public void test_getDisplayLanguageLjava_util_Locale() {
-        if (Support_Locale.isLocaleAvailable(testLocale)) {
-            assertEquals("anglais", testLocale.getDisplayLanguage(l));
-        }
+        assertEquals("anglais", new Locale("en", "CA", "WIN32").getDisplayLanguage(l));
     }
 
     public void test_getDisplayName() {
-        assertEquals("English (Canada,WIN32)", testLocale.getDisplayName());
+        assertEquals("English (Canada,WIN32)", new Locale("en", "CA", "WIN32").getDisplayName());
     }
 
     public void test_getDisplayNameLjava_util_Locale() {
-        if (Support_Locale.isLocaleAvailable(testLocale)) {
-            assertEquals("anglais (Canada,WIN32)", testLocale.getDisplayName(l));
-        }
+        assertEquals("anglais (Canada,WIN32)", new Locale("en", "CA", "WIN32").getDisplayName(l));
     }
 
     /**
@@ -343,8 +350,7 @@ public class LocaleTest extends junit.framework.TestCase {
      */
     public void test_toString() {
         // Test for method java.lang.String java.util.Locale.toString()
-        assertEquals("Returned incorrect string representation", "en_CA_WIN32", testLocale
-                .toString());
+        assertEquals("en_CA_WIN32", new Locale("en", "CA", "WIN32").toString());
 
         Locale l = new Locale("en", "");
         assertEquals("Wrong representation 1", "en", l.toString());

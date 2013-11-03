@@ -394,9 +394,10 @@ class LocaleNameIterator {
   }
 
   void Up() {
-    locale_name_length_ = uloc_getParent(locale_name_, locale_name_, sizeof(locale_name_), &status_);
     if (locale_name_length_ == 0) {
       has_next_ = false;
+    } else {
+      locale_name_length_ = uloc_getParent(locale_name_, locale_name_, sizeof(locale_name_), &status_);
     }
   }
 
@@ -438,43 +439,13 @@ static bool getDateTimePatterns(JNIEnv* env, jobject localeData, const char* loc
   return true;
 }
 
-static bool getTimeFormats12And24(JNIEnv* env, jobject localeData, Locale& locale) {
-  UErrorCode status = U_ZERO_ERROR;
-  DateTimePatternGenerator* generator = DateTimePatternGenerator::createInstance(locale, status);
-  if (U_FAILURE(status)) {
-    return false;
-  }
-
-  UnicodeString pattern_Hm(generator->getBestPattern(UnicodeString("Hm", 2, US_INV), status));
-  if (U_FAILURE(status)) {
-    return false;
-  }
-
-  UnicodeString pattern_hm(generator->getBestPattern(UnicodeString("hm", 2, US_INV), status));
-  if (U_FAILURE(status)) {
-    return false;
-  }
-
-  setStringField(env, localeData, "timeFormat12", pattern_hm);
-  setStringField(env, localeData, "timeFormat24", pattern_Hm);
-  return true;
-}
-
 static bool getYesterdayTodayAndTomorrow(JNIEnv* env, jobject localeData, const char* locale_name) {
   UErrorCode status = U_ZERO_ERROR;
   ScopedResourceBundle root(ures_open(NULL, locale_name, &status));
   if (U_FAILURE(status)) {
     return false;
   }
-  ScopedResourceBundle calendar(ures_getByKey(root.get(), "calendar", NULL, &status));
-  if (U_FAILURE(status)) {
-    return false;
-  }
-  ScopedResourceBundle gregorian(ures_getByKey(calendar.get(), "gregorian", NULL, &status));
-  if (U_FAILURE(status)) {
-    return false;
-  }
-  ScopedResourceBundle fields(ures_getByKey(gregorian.get(), "fields", NULL, &status));
+  ScopedResourceBundle fields(ures_getByKey(root.get(), "fields", NULL, &status));
   if (U_FAILURE(status)) {
     return false;
   }
@@ -519,13 +490,6 @@ static jboolean ICU_initLocaleDataImpl(JNIEnv* env, jclass, jstring javaLocaleNa
         return JNI_FALSE;
     }
 
-    // Get the "h:mm a" and "HH:mm" 12- and 24-hour time format strings.
-    Locale locale = getLocale(env, javaLocaleName);
-    if (!getTimeFormats12And24(env, localeData, locale)) {
-        ALOGE("Couldn't find ICU 12- and 24-hour time formats for %s", localeName.c_str());
-        return JNI_FALSE;
-    }
-
     // Get the "Yesterday", "Today", and "Tomorrow" strings.
     bool foundYesterdayTodayAndTomorrow = false;
     for (LocaleNameIterator it(localeName.c_str(), status); it.HasNext(); it.Up()) {
@@ -540,6 +504,7 @@ static jboolean ICU_initLocaleDataImpl(JNIEnv* env, jclass, jstring javaLocaleNa
     }
 
     status = U_ZERO_ERROR;
+    Locale locale = getLocale(env, javaLocaleName);
     UniquePtr<Calendar> cal(Calendar::createInstance(locale, status));
     if (U_FAILURE(status)) {
         return JNI_FALSE;
@@ -674,44 +639,25 @@ static jstring ICU_getUnicodeVersion(JNIEnv* env, jclass) {
     return versionString(env, unicodeVersion);
 }
 
-struct EnumerationCounter {
-    const size_t count;
-    EnumerationCounter(size_t count) : count(count) {}
-    size_t operator()() { return count; }
-};
-struct EnumerationGetter {
-    UEnumeration* e;
-    UErrorCode* status;
-    EnumerationGetter(UEnumeration* e, UErrorCode* status) : e(e), status(status) {}
-    const UChar* operator()(int32_t* charCount) { return uenum_unext(e, charCount, status); }
-};
 static jobject ICU_getAvailableCurrencyCodes(JNIEnv* env, jclass) {
-    UErrorCode status = U_ZERO_ERROR;
-    UEnumeration* e(ucurr_openISOCurrencies(UCURR_COMMON|UCURR_NON_DEPRECATED, &status));
-    EnumerationCounter counter(uenum_count(e, &status));
-    if (maybeThrowIcuException(env, "uenum_count", status)) {
-        return NULL;
-    }
-    EnumerationGetter getter(e, &status);
-    jobject result = toStringArray16(env, &counter, &getter);
-    maybeThrowIcuException(env, "uenum_unext", status);
-    uenum_close(e);
-    return result;
+  UErrorCode status = U_ZERO_ERROR;
+  UStringEnumeration e(ucurr_openISOCurrencies(UCURR_COMMON|UCURR_NON_DEPRECATED, &status));
+  return fromStringEnumeration(env, status, "ucurr_openISOCurrencies", &e);
 }
 
-static jstring ICU_getBestDateTimePattern(JNIEnv* env, jclass, jstring javaPattern, jstring javaLocaleName) {
+static jstring ICU_getBestDateTimePattern(JNIEnv* env, jclass, jstring javaSkeleton, jstring javaLocaleName) {
   Locale locale = getLocale(env, javaLocaleName);
   UErrorCode status = U_ZERO_ERROR;
-  DateTimePatternGenerator* generator = DateTimePatternGenerator::createInstance(locale, status);
+  UniquePtr<DateTimePatternGenerator> generator(DateTimePatternGenerator::createInstance(locale, status));
   if (maybeThrowIcuException(env, "DateTimePatternGenerator::createInstance", status)) {
     return NULL;
   }
 
-  ScopedJavaUnicodeString patternHolder(env, javaPattern);
-  if (!patternHolder.valid()) {
+  ScopedJavaUnicodeString skeletonHolder(env, javaSkeleton);
+  if (!skeletonHolder.valid()) {
     return NULL;
   }
-  UnicodeString result(generator->getBestPattern(patternHolder.unicodeString(), status));
+  UnicodeString result(generator->getBestPattern(skeletonHolder.unicodeString(), status));
   if (maybeThrowIcuException(env, "DateTimePatternGenerator::getBestPattern", status)) {
     return NULL;
   }

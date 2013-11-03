@@ -54,7 +54,7 @@ public class ForwardingOs implements Os {
     public int fcntlFlock(FileDescriptor fd, int cmd, StructFlock arg) throws ErrnoException { return os.fcntlFlock(fd, cmd, arg); }
     public void fdatasync(FileDescriptor fd) throws ErrnoException { os.fdatasync(fd); }
     public StructStat fstat(FileDescriptor fd) throws ErrnoException { return os.fstat(fd); }
-    public StructStatFs fstatfs(FileDescriptor fd) throws ErrnoException { return os.fstatfs(fd); }
+    public StructStatVfs fstatvfs(FileDescriptor fd) throws ErrnoException { return os.fstatvfs(fd); }
     public void fsync(FileDescriptor fd) throws ErrnoException { os.fsync(fd); }
     public void ftruncate(FileDescriptor fd, long length) throws ErrnoException { os.ftruncate(fd, length); }
     public String gai_strerror(int error) { return os.gai_strerror(error); }
@@ -76,6 +76,7 @@ public class ForwardingOs implements Os {
     public StructLinger getsockoptLinger(FileDescriptor fd, int level, int option) throws ErrnoException { return os.getsockoptLinger(fd, level, option); }
     public StructTimeval getsockoptTimeval(FileDescriptor fd, int level, int option) throws ErrnoException { return os.getsockoptTimeval(fd, level, option); }
     public StructUcred getsockoptUcred(FileDescriptor fd, int level, int option) throws ErrnoException { return os.getsockoptUcred(fd, level, option); }
+    public int gettid() { return os.gettid(); }
     public int getuid() { return os.getuid(); }
     public String if_indextoname(int index) { return os.if_indextoname(index); }
     public InetAddress inet_pton(int family, String address) { return os.inet_pton(family, address); }
@@ -128,7 +129,7 @@ public class ForwardingOs implements Os {
     public FileDescriptor socket(int domain, int type, int protocol) throws ErrnoException { return os.socket(domain, type, protocol); }
     public void socketpair(int domain, int type, int protocol, FileDescriptor fd1, FileDescriptor fd2) throws ErrnoException { os.socketpair(domain, type, protocol, fd1, fd2); }
     public StructStat stat(String path) throws ErrnoException { return os.stat(path); }
-    public StructStatFs statfs(String path) throws ErrnoException { return os.statfs(path); }
+    public StructStatVfs statvfs(String path) throws ErrnoException { return os.statvfs(path); }
     public String strerror(int errno) { return os.strerror(errno); }
     public String strsignal(int signal) { return os.strsignal(signal); }
     public void symlink(String oldPath, String newPath) throws ErrnoException { os.symlink(oldPath, newPath); }

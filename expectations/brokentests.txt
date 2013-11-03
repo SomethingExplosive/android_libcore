@@ -543,17 +543,6 @@
   substring: "GMT-07:00"
 },
 {
-  description: "These harmony tests are broken. The RI doesn't ship with es__TRADITIONAL, so
-                they have incorrect expectations.
-                http://b/2608750",
-  result: EXEC_FAILED,
-  names: [
-    "org.apache.harmony.text.tests.java.text.RuleBasedCollatorTest#testGetCollationElementIteratorCharacterIterator",
-    "org.apache.harmony.text.tests.java.text.RuleBasedCollatorTest#testGetCollationElementIteratorString"
-  ],
-  substring: "expected:<1> but was:<2>"
-},
-{
   description: "This test fails because on Android, RuleBasedCollators default to
                 CANONICAL_DECOMPOSITION, not NO_DECOMPOSITION.",
   result: EXEC_FAILED,
@@ -768,12 +757,6 @@
   substring: "junit.framework.AssertionFailedError: expected:<3> but was:<2>"
 },
 {
-  description: "this is testing exception priorities",
-  result: EXEC_FAILED,
-  name: "org.apache.harmony.nio.tests.java.nio.channels.DatagramChannelTest#testReadByteBuffer_readOnlyBuf",
-  substring: "java.lang.IllegalArgumentException: read-only buffer"
-},
-{
   description: "ICU doesn't provide localized pattern characters, and these tests assume the locale they're using has them.",
   result: EXEC_FAILED,
   name: "org.apache.harmony.text.tests.java.text.SimpleDateFormatTest#test_applyLocalizedPatternLjava_lang_String",
@@ -808,12 +791,6 @@
   result: EXEC_FAILED,
   name: "tests.api.java.nio.charset.UTFCharsetEncoderTest#testSpecificDefaultValue",
   substring: "junit.framework.AssertionFailedError: expected:<1.1> but was:<2.0>"
-},
-{
-  description: "We don't permit runtime switching of the default charset (and neither does the RI)",
-  result: EXEC_FAILED,
-  name: "org.apache.harmony.nio_char.tests.java.nio.charset.CharsetTest#test_defaultCharset",
-  substring: "expected:<ISO-8859-1> but was:<UTF-8>"
 },
 {
   description: "this test needs external interaction",

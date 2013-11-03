@@ -52,29 +52,6 @@ endef
 # sub.mk files don't see anything stray from the last rule that was
 # set up.
 
-# Set up the test library first
-ifeq ($(LIBCORE_SKIP_TESTS),)
-include $(CLEAR_VARS)
-LOCAL_MODULE := $(core_magic_local_target)
-core_src_files :=
-
-# Include the sub.mk files.
-$(foreach dir, \
-    luni/src/test/native, \
-    $(eval $(call include-core-native-dir,$(dir))))
-
-# This is for the test library, so rename the variable.
-test_src_files := $(core_src_files)
-core_src_files :=
-
-# Extract out the allowed LOCAL_* variables. Note: $(sort) also
-# removes duplicates.
-test_c_includes := $(sort libcore/include $(LOCAL_C_INCLUDES) $(JNI_H_INCLUDE))
-test_shared_libraries := $(sort $(LOCAL_SHARED_LIBRARIES))
-test_static_libraries := $(sort $(LOCAL_STATIC_LIBRARIES))
-endif # LIBCORE_SKIP_TESTS
-
-
 include $(CLEAR_VARS)
 LOCAL_MODULE := $(core_magic_local_target)
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/NativeCode.mk
@@ -85,64 +62,65 @@ $(foreach dir, \
     dalvik/src/main/native luni/src/main/native, \
     $(eval $(call include-core-native-dir,$(dir))))
 
-# Extract out the allowed LOCAL_* variables. Note: $(sort) also
-# removes duplicates.
-core_c_includes := $(sort libcore/include $(LOCAL_C_INCLUDES) $(JNI_H_INCLUDE))
-core_shared_libraries := $(sort $(LOCAL_SHARED_LIBRARIES))
-core_static_libraries := $(sort $(LOCAL_STATIC_LIBRARIES))
+# Extract out the allowed LOCAL_* variables.
+core_c_includes := libcore/include $(LOCAL_C_INCLUDES)
+core_shared_libraries := $(LOCAL_SHARED_LIBRARIES)
+core_static_libraries := $(LOCAL_STATIC_LIBRARIES)
+core_cflags := -Wall -Wextra -Werror
+core_cppflags += -std=gnu++11
 
+core_test_files := \
+  luni/src/test/native/test_openssl_engine.cpp \
 
 #
 # Build for the target (device).
 #
 
 include $(CLEAR_VARS)
-
-LOCAL_CFLAGS += -Wall -Wextra -Werror
 LOCAL_CFLAGS += $(core_cflags)
 LOCAL_CPPFLAGS += $(core_cppflags)
-ifeq ($(TARGET_ARCH),arm)
-# Ignore "note: the mangling of 'va_list' has changed in GCC 4.4"
-LOCAL_CFLAGS += -Wno-psabi
-endif
-
-# Define the rules.
-LOCAL_SRC_FILES := $(core_src_files)
-LOCAL_C_INCLUDES := $(core_c_includes)
-LOCAL_SHARED_LIBRARIES := $(core_shared_libraries) libexpat libicuuc libicui18n libssl libcrypto libz libnativehelper
-LOCAL_STATIC_LIBRARIES := $(core_static_libraries)
+LOCAL_SRC_FILES += $(core_src_files)
+LOCAL_C_INCLUDES += $(core_c_includes)
+LOCAL_SHARED_LIBRARIES += $(core_shared_libraries) libcrypto libexpat libicuuc libicui18n libnativehelper libz
+LOCAL_STATIC_LIBRARIES += $(core_static_libraries)
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE := libjavacore
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/NativeCode.mk
-
-LOCAL_C_INCLUDES += external/stlport/stlport bionic/ bionic/libstdc++/include
-LOCAL_SHARED_LIBRARIES += libstlport
-
+include external/stlport/libstlport.mk
 include $(BUILD_SHARED_LIBRARY)
 
-
-# Test library
-ifeq ($(LIBCORE_SKIP_TESTS),)
+# Platform conscrypt crypto library
 include $(CLEAR_VARS)
+LOCAL_CFLAGS += $(core_cflags)
+LOCAL_CFLAGS += -DJNI_JARJAR_PREFIX="com/android/"
+LOCAL_CPPFLAGS += $(core_cppflags)
+LOCAL_SRC_FILES := \
+        crypto/src/main/native/org_conscrypt_NativeCrypto.cpp
+LOCAL_C_INCLUDES += $(core_c_includes) \
+        libcore/luni/src/main/native
+LOCAL_SHARED_LIBRARIES += $(core_shared_libraries) libcrypto libssl libnativehelper libz libjavacore
+LOCAL_STATIC_LIBRARIES += $(core_static_libraries)
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE := libjavacrypto
+LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/NativeCode.mk
+include external/stlport/libstlport.mk
+include $(BUILD_SHARED_LIBRARY)
 
-LOCAL_CFLAGS += -Wall -Wextra -Werror
+# Test JNI library.
+ifeq ($(LIBCORE_SKIP_TESTS),)
+
+include $(CLEAR_VARS)
 LOCAL_CFLAGS += $(core_cflags)
 LOCAL_CPPFLAGS += $(core_cppflags)
-ifeq ($(TARGET_ARCH),arm)
-# Ignore "note: the mangling of 'va_list' has changed in GCC 4.4"
-LOCAL_CFLAGS += -Wno-psabi
-endif
-
-# Define the rules.
-LOCAL_SRC_FILES := $(test_src_files)
-LOCAL_C_INCLUDES := $(test_c_includes)
-LOCAL_SHARED_LIBRARIES := $(test_shared_libraries)
-LOCAL_STATIC_LIBRARIES := $(test_static_libraries)
+LOCAL_SRC_FILES += $(core_test_files)
+LOCAL_C_INCLUDES += libcore/include external/openssl/include
+LOCAL_SHARED_LIBRARIES += libcrypto
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE := libjavacoretests
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/NativeCode.mk
-
+include external/stlport/libstlport.mk
 include $(BUILD_SHARED_LIBRARY)
+
 endif # LIBCORE_SKIP_TESTS
 
 
@@ -152,32 +130,60 @@ endif # LIBCORE_SKIP_TESTS
 
 ifeq ($(WITH_HOST_DALVIK),true)
     include $(CLEAR_VARS)
-    # Define the rules.
-    LOCAL_SRC_FILES := $(core_src_files)
+    LOCAL_SRC_FILES += $(core_src_files)
     LOCAL_CFLAGS += $(core_cflags)
-    LOCAL_C_INCLUDES := $(core_c_includes)
+    LOCAL_C_INCLUDES += $(core_c_includes)
     LOCAL_CPPFLAGS += $(core_cppflags)
-    LOCAL_LDLIBS += -ldl -lpthread
+    LOCAL_LDLIBS += -ldl -lpthread -lrt
     LOCAL_MODULE_TAGS := optional
     LOCAL_MODULE := libjavacore
     LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/NativeCode.mk
-    LOCAL_SHARED_LIBRARIES := $(core_shared_libraries) libexpat libicuuc libicui18n libssl libcrypto libz-host
-    LOCAL_STATIC_LIBRARIES := $(core_static_libraries)
+    LOCAL_SHARED_LIBRARIES += $(core_shared_libraries) libexpat-host libicuuc-host libicui18n-host libcrypto-host libz-host
+    LOCAL_STATIC_LIBRARIES += $(core_static_libraries)
+    include $(BUILD_HOST_SHARED_LIBRARY)
+
+    # Conscrypt native library for host
+    include $(CLEAR_VARS)
+    LOCAL_SRC_FILES += \
+            crypto/src/main/native/org_conscrypt_NativeCrypto.cpp
+    LOCAL_C_INCLUDES += $(core_c_includes) \
+            libcore/luni/src/main/native
+    LOCAL_CPPFLAGS += $(core_cppflags)
+    LOCAL_LDLIBS += -lpthread
+    LOCAL_MODULE_TAGS := optional
+    LOCAL_MODULE := libjavacrypto
+    LOCAL_CFLAGS += -DJNI_JARJAR_PREFIX="com/android/"
+    LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/NativeCode.mk
+    LOCAL_SHARED_LIBRARIES += $(core_shared_libraries) libssl-host libcrypto-host libjavacore
+    LOCAL_STATIC_LIBRARIES += $(core_static_libraries)
+    include $(BUILD_HOST_SHARED_LIBRARY)
+
+    # Conscrypt native library for nojarjar'd version
+    include $(CLEAR_VARS)
+    LOCAL_SRC_FILES += \
+            crypto/src/main/native/org_conscrypt_NativeCrypto.cpp
+    LOCAL_C_INCLUDES += $(core_c_includes) \
+            libcore/luni/src/main/native
+    LOCAL_CPPFLAGS += $(core_cppflags)
+    LOCAL_LDLIBS += -lpthread
+    LOCAL_MODULE_TAGS := optional
+    LOCAL_MODULE := libconscrypt_jni
+    LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/NativeCode.mk
+    LOCAL_SHARED_LIBRARIES += $(core_shared_libraries) libssl-host libcrypto-host libjavacore
+    LOCAL_STATIC_LIBRARIES += $(core_static_libraries)
     include $(BUILD_HOST_SHARED_LIBRARY)
 
     ifeq ($(LIBCORE_SKIP_TESTS),)
     include $(CLEAR_VARS)
-    # Define the rules.
-    LOCAL_SRC_FILES := $(test_src_files)
+    LOCAL_SRC_FILES += $(core_test_files)
     LOCAL_CFLAGS += $(core_cflags)
-    LOCAL_C_INCLUDES := $(test_c_includes)
+    LOCAL_C_INCLUDES += libcore/include external/openssl/include
     LOCAL_CPPFLAGS += $(core_cppflags)
     LOCAL_LDLIBS += -ldl -lpthread
     LOCAL_MODULE_TAGS := optional
     LOCAL_MODULE := libjavacoretests
     LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/NativeCode.mk
-    LOCAL_SHARED_LIBRARIES := $(test_shared_libraries)
-    LOCAL_STATIC_LIBRARIES := $(test_static_libraries)
+    LOCAL_SHARED_LIBRARIES := libcrypto-host
     include $(BUILD_HOST_SHARED_LIBRARY)
     endif # LIBCORE_SKIP_TESTS
 endif

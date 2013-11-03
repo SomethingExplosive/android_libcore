@@ -20,6 +20,8 @@ import com.android.org.bouncycastle.asn1.x509.KeyUsage;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.math.BigInteger;
+import java.nio.ByteBuffer;
+import java.security.AlgorithmParameters;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.Key;
@@ -91,28 +93,28 @@ public final class CipherTest extends TestCase {
         IS_UNLIMITED = is_unlimited;
     }
 
-    private static boolean isUnsupported(String algorithm, String provider) {
+    private static boolean isSupported(String algorithm, String provider) {
         if (algorithm.equals("RC2")) {
-            return true;
+            return false;
         }
         if (algorithm.equals("PBEWITHMD5ANDRC2")) {
-            return true;
+            return false;
         }
         if (algorithm.startsWith("PBEWITHSHA1ANDRC2")) {
-            return true;
+            return false;
         }
         if (algorithm.equals("PBEWITHSHAAND40BITRC2-CBC")) {
-            return true;
+            return false;
         }
         if (algorithm.equals("PBEWITHSHAAND128BITRC2-CBC")) {
-            return true;
+            return false;
         }
         if (algorithm.equals("PBEWITHSHAANDTWOFISH-CBC")) {
-            return true;
+            return false;
         }
         if (!IS_UNLIMITED) {
             if (algorithm.equals("PBEWITHMD5ANDTRIPLEDES")) {
-                return true;
+                return false;
             }
         }
         // stream modes CFB, CTR, CTS, OFB with PKCS5Padding don't really make sense
@@ -121,25 +123,25 @@ public final class CipherTest extends TestCase {
              || algorithm.equals("AES/CTR/PKCS5PADDING")
              || algorithm.equals("AES/CTS/PKCS5PADDING")
              || algorithm.equals("AES/OFB/PKCS5PADDING"))) {
-            return true;
+            return false;
         }
-        return false;
+        return true;
     }
 
-    private static boolean isUnsupportedForWrapping(String algorithm) {
+    private static boolean isSupportedForWrapping(String algorithm) {
         if (isOnlyWrappingAlgorithm(algorithm)) {
-            return false;
+            return true;
         }
         // http://b/9097343 RSA with NoPadding won't work since
         // leading zeroes in the underlying key material are lost.
         if (algorithm.equals("RSA/ECB/NOPADDING")) {
-            return true;
+            return false;
         }
         // AESWRAP should be used instead, fails with BC and SunJCE otherwise.
         if (algorithm.startsWith("AES")) {
-            return true;
+            return false;
         }
-        return false;
+        return true;
     }
 
     private synchronized static int getEncryptMode(String algorithm) throws Exception {
@@ -777,8 +779,10 @@ public final class CipherTest extends TestCase {
 
         // Cipher.getInstance(String)
         Cipher c1 = Cipher.getInstance(algorithm);
-        assertEquals(algorithm, c1.getAlgorithm());
-        test_Cipher(c1);
+        if (provider.equals(c1.getProvider())) {
+            assertEquals(algorithm, c1.getAlgorithm());
+            test_Cipher(c1);
+        }
 
         // Cipher.getInstance(String, Provider)
         Cipher c2 = Cipher.getInstance(algorithm, provider);
@@ -796,7 +800,7 @@ public final class CipherTest extends TestCase {
     private void test_Cipher(Cipher c) throws Exception {
         String algorithm = c.getAlgorithm().toUpperCase(Locale.US);
         String providerName = c.getProvider().getName();
-        if (isUnsupported(algorithm, providerName)) {
+        if (!isSupported(algorithm, providerName)) {
             return;
         }
         String cipherID = algorithm + ":" + providerName;
@@ -811,6 +815,23 @@ public final class CipherTest extends TestCase {
 
         final AlgorithmParameterSpec encryptSpec = getEncryptAlgorithmParameterSpec(algorithm);
         int encryptMode = getEncryptMode(algorithm);
+
+        // Bouncycastle doesn't return a default PBEParameterSpec
+        if (isPBE(algorithm) && !"BC".equals(providerName)) {
+            assertNotNull(cipherID + " getParameters()", c.getParameters());
+            assertNotNull(c.getParameters().getParameterSpec(PBEParameterSpec.class));
+        } else {
+            assertNull(cipherID + " getParameters()", c.getParameters());
+        }
+        try {
+            assertNull(cipherID + " getIV()", c.getIV());
+        } catch (NullPointerException e) {
+            // Bouncycastle apparently has a bug here with AESWRAP, et al.
+            if (!("BC".equals(providerName) && isOnlyWrappingAlgorithm(algorithm))) {
+                throw e;
+            }
+        }
+
         c.init(encryptMode, encryptKey, encryptSpec);
         assertEquals(cipherID + " getBlockSize() encryptMode",
                      getExpectedBlockSize(algorithm, encryptMode, providerName), c.getBlockSize());
@@ -825,14 +846,46 @@ public final class CipherTest extends TestCase {
         assertEquals(cipherID + " getOutputSize(0) decryptMode",
                      getExpectedOutputSize(algorithm, decryptMode, providerName), c.getOutputSize(0));
 
-        // TODO: test Cipher.getIV()
+        if (isPBE(algorithm)) {
+            if (algorithm.endsWith("RC4")) {
+                assertNull(cipherID + " getIV()", c.getIV());
+            } else {
+                assertNotNull(cipherID + " getIV()", c.getIV());
+            }
+        } else if (decryptSpec instanceof IvParameterSpec) {
+            assertEquals(cipherID + " getIV()",
+                    Arrays.toString(((IvParameterSpec) decryptSpec).getIV()),
+                    Arrays.toString(c.getIV()));
+        } else {
+            try {
+                assertNull(cipherID + " getIV()", c.getIV());
+            } catch (NullPointerException e) {
+                // Bouncycastle apparently has a bug here with AESWRAP, et al.
+                if (!("BC".equals(providerName) && isOnlyWrappingAlgorithm(algorithm))) {
+                    throw e;
+                }
+            }
+        }
 
-        // TODO: test Cipher.getParameters()
+        AlgorithmParameters params = c.getParameters();
+        if (decryptSpec == null) {
+            assertNull(cipherID + " getParameters()", params);
+        } else if (decryptSpec instanceof IvParameterSpec) {
+            IvParameterSpec ivDecryptSpec = (IvParameterSpec) params.getParameterSpec(IvParameterSpec.class);
+            assertEquals(cipherID + " getIV()",
+                    Arrays.toString(((IvParameterSpec) decryptSpec).getIV()),
+                    Arrays.toString(ivDecryptSpec.getIV()));
+        } else if (decryptSpec instanceof PBEParameterSpec) {
+            // Bouncycastle seems to be schizophrenic about whther it returns this or not
+            if (!"BC".equals(providerName)) {
+                assertNotNull(cipherID + " getParameters()", params);
+            }
+        }
 
         assertNull(cipherID, c.getExemptionMechanism());
 
         // Test wrapping a key.  Every cipher should be able to wrap. Except those that can't.
-        if (!isUnsupportedForWrapping(algorithm)) {
+        if (isSupportedForWrapping(algorithm)) {
             // Generate a small SecretKey for AES.
             KeyGenerator kg = KeyGenerator.getInstance("AES");
             kg.init(128);
@@ -2164,6 +2217,12 @@ public final class CipherTest extends TestCase {
 
         c.init(Cipher.DECRYPT_MODE, key, spec);
 
+        try {
+            c.updateAAD(new byte[8]);
+            fail("Cipher should not support AAD");
+        } catch (UnsupportedOperationException expected) {
+        }
+
         byte[] emptyPlainText = c.doFinal(emptyCipherText);
         assertEquals(Arrays.toString(EmptyArray.BYTE), Arrays.toString(emptyPlainText));
 
@@ -2254,6 +2313,82 @@ public final class CipherTest extends TestCase {
                             + decryptedKey.getAlgorithm() + " encryptKey.getEncoded()="
                             + Arrays.toString(sk.getEncoded()) + " decryptedKey.getEncoded()="
                             + Arrays.toString(decryptedKey.getEncoded()), sk, decryptedKey);
+        }
+    }
+
+    public void testCipher_updateAAD_BeforeInit_Failure() throws Exception {
+        Cipher c = Cipher.getInstance("AES/ECB/NoPadding");
+
+        try {
+            c.updateAAD((byte[]) null);
+            fail("should not be able to call updateAAD before Cipher is initialized");
+        } catch (IllegalArgumentException expected) {
+        }
+
+        try {
+            c.updateAAD((ByteBuffer) null);
+            fail("should not be able to call updateAAD before Cipher is initialized");
+        } catch (IllegalStateException expected) {
+        }
+
+        try {
+            c.updateAAD(new byte[8]);
+            fail("should not be able to call updateAAD before Cipher is initialized");
+        } catch (IllegalStateException expected) {
+        }
+
+        try {
+            c.updateAAD(null, 0, 8);
+            fail("should not be able to call updateAAD before Cipher is initialized");
+        } catch (IllegalStateException expected) {
+        }
+
+        ByteBuffer bb = ByteBuffer.allocate(8);
+        try {
+            c.updateAAD(bb);
+            fail("should not be able to call updateAAD before Cipher is initialized");
+        } catch (IllegalStateException expected) {
+        }
+    }
+
+    public void testCipher_updateAAD_AfterInit_Failure() throws Exception {
+        Cipher c = Cipher.getInstance("AES/ECB/NoPadding");
+        c.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(new byte[128 / 8], "AES"));
+
+        try {
+            c.updateAAD((byte[]) null);
+            fail("should not be able to call updateAAD with null input");
+        } catch (IllegalArgumentException expected) {
+        }
+
+        try {
+            c.updateAAD((ByteBuffer) null);
+            fail("should not be able to call updateAAD with null input");
+        } catch (IllegalArgumentException expected) {
+        }
+
+        try {
+            c.updateAAD(null, 0, 8);
+            fail("should not be able to call updateAAD with null input");
+        } catch (IllegalArgumentException expected) {
+        }
+
+        try {
+            c.updateAAD(new byte[8], -1, 7);
+            fail("should not be able to call updateAAD with invalid offset");
+        } catch (IllegalArgumentException expected) {
+        }
+
+        try {
+            c.updateAAD(new byte[8], 0, -1);
+            fail("should not be able to call updateAAD with negative length");
+        } catch (IllegalArgumentException expected) {
+        }
+
+        try {
+            c.updateAAD(new byte[8], 0, 8 + 1);
+            fail("should not be able to call updateAAD with too large length");
+        } catch (IllegalArgumentException expected) {
         }
     }
 
